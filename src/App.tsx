@@ -238,6 +238,9 @@ function App() {
                 onDeactivateLine={handleDeactivateLine}
               />
             </div>
+          </div>
+        )}
+      </main>
 
       {/* Settings Modal */}
       <Settings
