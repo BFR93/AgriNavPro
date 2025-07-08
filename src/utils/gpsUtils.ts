@@ -59,6 +59,65 @@ export const calculateCrossTrackError = (currentPos: GPSPosition, abLine: ABLine
   };
 };
 
+export const findClosestParallelLine = (
+  currentPos: GPSPosition, 
+  abLine: ABLine, 
+  machineWidth: number
+): { line: ABLine; distance: number } => {
+  const bearing = calculateBearing(abLine.pointA, abLine.pointB);
+  const perpendicularBearing = (bearing + 90) % 360;
+  
+  let closestLine = abLine;
+  let minDistance = calculateDistanceToLine(currentPos, abLine);
+  
+  // Check parallel lines on both sides
+  for (let i = -10; i <= 10; i++) {
+    if (i === 0) continue;
+    
+    const offset = i * machineWidth;
+    const offsetRad = (perpendicularBearing * Math.PI) / 180;
+    
+    // Calculate offset in meters to lat/lon
+    const latOffset = (offset * Math.cos(offsetRad)) / 111320;
+    const lonOffset = (offset * Math.sin(offsetRad)) / (111320 * Math.cos(abLine.pointA.latitude * Math.PI / 180));
+    
+    const parallelLine: ABLine = {
+      id: `${abLine.id}_parallel_${i}`,
+      pointA: {
+        latitude: abLine.pointA.latitude + latOffset,
+        longitude: abLine.pointA.longitude + lonOffset,
+        timestamp: Date.now()
+      },
+      pointB: {
+        latitude: abLine.pointB.latitude + latOffset,
+        longitude: abLine.pointB.longitude + lonOffset,
+        timestamp: Date.now()
+      },
+      name: `${abLine.name} +${offset}m`,
+      created: abLine.created
+    };
+    
+    const distance = calculateDistanceToLine(currentPos, parallelLine);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestLine = parallelLine;
+    }
+  }
+  
+  return { line: closestLine, distance: minDistance };
+};
+
+export const calculateDistanceToLine = (point: GPSPosition, line: ABLine): number => {
+  const { pointA, pointB } = line;
+  
+  // Calculate distance from point to line using cross track error
+  const lineBearing = calculateBearing(pointA, pointB);
+  const aToPointDistance = calculateDistance(pointA, point);
+  const aToPointBearing = calculateBearing(pointA, point);
+  
+  const bearingDiff = (aToPointBearing - lineBearing + 360) % 360;
+  return Math.abs(aToPointDistance * Math.sin(bearingDiff * Math.PI / 180));
+};
 export const formatCoordinate = (coord: number, isLatitude: boolean): string => {
   const abs = Math.abs(coord);
   const degrees = Math.floor(abs);

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Tractor, Settings, Map, BarChart3 } from 'lucide-react';
+import { Tractor, Settings as SettingsIcon, Map, BarChart3 } from 'lucide-react';
 import { GPSPosition, ABLine, PathPoint, GuidanceData } from './types/gps';
 import { useGPS } from './hooks/useGPS';
-import { calculateCrossTrackError } from './utils/gpsUtils';
+import { calculateCrossTrackError, findClosestParallelLine } from './utils/gpsUtils';
 import { GPSStatus } from './components/GPSStatus';
 import { EnhancedGuidanceDisplay } from './components/EnhancedGuidanceDisplay';
 import { ABLineManager } from './components/ABLineManager';
-import { SatelliteMapView } from './components/SatelliteMapView';
+import { MapGuidanceView } from './components/MapGuidanceView';
 import { CoverageStats } from './components/CoverageStats';
+import { Settings } from './components/Settings';
 
 function App() {
   const { 
@@ -24,20 +25,25 @@ function App() {
   const [pathPoints, setPathPoints] = useState<PathPoint[]>([]);
   const [guidanceData, setGuidanceData] = useState<GuidanceData | null>(null);
   const [sessionStartTime] = useState(Date.now());
-  const [activeTab, setActiveTab] = useState<'guidance' | 'map' | 'coverage'>('guidance');
+  const [activeTab, setActiveTab] = useState<'guidance' | 'map' | 'coverage'>('map');
+  const [showSettings, setShowSettings] = useState(false);
+  const [machineWidth, setMachineWidth] = useState(3.0); // Default 3m width
+  const [showTreatmentMap, setShowTreatmentMap] = useState(true);
 
   // Update guidance data when position or active line changes
   useEffect(() => {
     if (currentPosition && activeLineId) {
       const activeLine = abLines.find(line => line.id === activeLineId);
       if (activeLine) {
-        const guidance = calculateCrossTrackError(currentPosition, activeLine);
+        // Find the closest parallel line for more accurate guidance
+        const { line: closestLine } = findClosestParallelLine(currentPosition, activeLine, machineWidth);
+        const guidance = calculateCrossTrackError(currentPosition, closestLine);
         setGuidanceData(guidance);
       }
     } else {
       setGuidanceData(null);
     }
-  }, [currentPosition, activeLineId, abLines]);
+  }, [currentPosition, activeLineId, abLines, machineWidth]);
 
   // Record path points
   useEffect(() => {
@@ -109,7 +115,10 @@ function App() {
             >
               Clear Path
             </button>
-            <Settings className="w-6 h-6 text-green-200 cursor-pointer hover:text-white transition-colors" />
+            <SettingsIcon 
+              onClick={() => setShowSettings(true)}
+              className="w-6 h-6 text-green-200 cursor-pointer hover:text-white transition-colors" 
+            />
           </div>
         </div>
       </header>
@@ -187,16 +196,21 @@ function App() {
         {activeTab === 'map' && (
           <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
             <div className="xl:col-span-3">
-              <SatelliteMapView
-                currentPosition={currentPosition}
-                abLines={abLines}
-                activeLineId={activeLineId}
-                pathPoints={pathPoints}
-              />
+              <div className="h-[600px]">
+                <MapGuidanceView
+                  currentPosition={currentPosition}
+                  abLines={abLines}
+                  activeLineId={activeLineId}
+                  pathPoints={pathPoints}
+                  machineWidth={machineWidth}
+                  showTreatmentMap={showTreatmentMap}
+                  onToggleTreatmentMap={() => setShowTreatmentMap(!showTreatmentMap)}
+                />
+              </div>
             </div>
             <div>
               <GPSStatus
-                position={currentPosition}
+                currentPosition={currentPosition}
                 isConnected={isConnected}
                 error={error}
                 satelliteCount={satelliteCount}
@@ -207,23 +221,33 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'coverage' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <CoverageStats
-              pathPoints={pathPoints}
-              sessionStartTime={sessionStartTime}
-            />
-            <GPSStatus
-              position={currentPosition}
-              isConnected={isConnected}
-              error={error}
-              satelliteCount={satelliteCount}
-              fixQuality={fixQuality}
-              hdop={hdop}
-            />
-          </div>
-        )}
-      </main>
+        {activeTab === 'guidance' && (
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            <div className="xl:col-span-3 space-y-6">
+              <EnhancedGuidanceDisplay
+                guidance={guidanceData}
+                isActive={activeLineId !== null}
+              />
+              <ABLineManager
+                abLines={abLines}
+                position={currentPosition}
+                activeLineId={activeLineId}
+                onCreateLine={handleCreateLine}
+                onDeleteLine={handleDeleteLine}
+                onActivateLine={handleActivateLine}
+                onDeactivateLine={handleDeactivateLine}
+              />
+            </div>
+
+      {/* Settings Modal */}
+      <Settings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        machineWidth={machineWidth}
+        onMachineWidthChange={setMachineWidth}
+        showTreatmentMap={showTreatmentMap}
+        onToggleTreatmentMap={() => setShowTreatmentMap(!showTreatmentMap)}
+      />
     </div>
   );
 }
